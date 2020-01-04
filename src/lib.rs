@@ -42,31 +42,32 @@
 //! ```
 
 #![no_std]
-#![feature(alloc, allocator_api)]
+#![feature(allocator_api)]
 #![feature(const_fn)]
 
-extern crate riscv;
-extern crate linked_list_allocator;
 extern crate alloc;
+extern crate linked_list_allocator;
+extern crate mutex_trait;
+extern crate riscv;
 
-use alloc::allocator::{Alloc, Layout, AllocErr};
-
+use alloc::alloc::{Alloc, AllocErr, Layout};
+use core::ptr::NonNull;
 use linked_list_allocator::Heap;
-use riscv::interrupt::Mutex;
+use mutex_trait::Mutex;
+use riscv::interrupt::RISCVMutex;
 
 pub struct RISCVHeap {
-    heap: Mutex<Heap>,
+    heap: RISCVMutex<Heap>,
 }
 
 impl RISCVHeap {
-
     /// Crate a new UNINITIALIZED heap allocator
     ///
     /// You must initialize this heap using the
     /// [`init`](struct.RISCVHeap.html#method.init) method before using the allocator.
-    pub const fn empty() -> CortexMHeap {
-        CortexMHeap {
-            heap: Mutex::new(Heap::empty()),
+    pub const fn empty() -> RISCVHeap {
+        RISCVHeap {
+            heap: RISCVMutex::new(Heap::empty()),
         }
     }
 
@@ -93,19 +94,17 @@ impl RISCVHeap {
     ///
     /// - This function must be called exactly ONCE.
     /// - `size > 0`
-    pub unsafe fn init(&self, start_addr: usize, size: usize){
+    pub unsafe fn init(&mut self, start_addr: usize, size: usize) {
         self.heap.lock(|heap| heap.init(start_addr, size));
     }
 }
 
-unsafe impl<'a> Alloc for &'a RISCVHeap {
-    unsafe fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> {
-        self.heap.lock(|heap| {
-            heap.allocate_first_fit(layout)
-        })
+unsafe impl Alloc for RISCVHeap {
+    unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, AllocErr> {
+        self.heap.lock(|heap| heap.allocate_first_fit(layout))
     }
 
-    unsafe fn dealloc(&mut self, ptr: *mut u8, layout: Layout) {
-        self.heap.lock(|heap| heap.deallocate(ptr, layout));
+    unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
+        self.heap.lock(|heap| heap.deallocate(ptr, layout))
     }
 }
