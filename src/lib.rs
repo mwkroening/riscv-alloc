@@ -50,14 +50,15 @@ extern crate linked_list_allocator;
 extern crate mutex_trait;
 extern crate riscv;
 
-use alloc::alloc::{Alloc, AllocErr, Layout};
+use alloc::alloc::{Alloc, AllocErr, GlobalAlloc, Layout};
 use core::ptr::NonNull;
 use linked_list_allocator::Heap;
 use mutex_trait::Mutex;
 use riscv::interrupt::RISCVMutex;
+use core::cell::RefCell;
 
 pub struct RISCVHeap {
-    heap: RISCVMutex<Heap>,
+    heap: RISCVMutex<RefCell<Heap>>,
 }
 
 impl RISCVHeap {
@@ -67,7 +68,7 @@ impl RISCVHeap {
     /// [`init`](struct.RISCVHeap.html#method.init) method before using the allocator.
     pub const fn empty() -> RISCVHeap {
         RISCVHeap {
-            heap: RISCVMutex::new(Heap::empty()),
+            heap: RISCVMutex::new(RefCell::new(Heap::empty())),
         }
     }
 
@@ -94,17 +95,34 @@ impl RISCVHeap {
     ///
     /// - This function must be called exactly ONCE.
     /// - `size > 0`
-    pub unsafe fn init(&mut self, start_addr: usize, size: usize) {
-        self.heap.lock(|heap| heap.init(start_addr, size));
+    pub unsafe fn init(&self, start_addr: usize, size: usize) {
+        let mut r = &self.heap;
+        r.lock(|heap| heap.init(start_addr, size));
     }
 }
 
-unsafe impl Alloc for RISCVHeap {
+/*unsafe impl Alloc for RISCVHeap {
     unsafe fn alloc(&mut self, layout: Layout) -> Result<NonNull<u8>, AllocErr> {
         self.heap.lock(|heap| heap.allocate_first_fit(layout))
     }
 
     unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: Layout) {
         self.heap.lock(|heap| heap.deallocate(ptr, layout))
+    }
+}*/
+
+unsafe impl GlobalAlloc for RISCVHeap {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let mut heap = &self.heap;
+        heap
+            .lock(|heap| (*heap).allocate_first_fit(layout))
+            .ok()
+            .map_or(0 as *mut u8, |allocation| allocation.as_ptr())
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        let mut heap = &self.heap;
+        heap
+            .lock(|heap| heap.deallocate(NonNull::new_unchecked(ptr), layout))
     }
 }

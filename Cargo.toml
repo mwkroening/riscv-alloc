@@ -6,4 +6,4 @@ authors = ["David Craven <david@craven.ch>"]
 [dependencies]
 linked_list_allocator = "0.6"
 mutex-trait = { git = "https://github.com/rust-embedded/mutex-trait.git" }
-riscv = { git = "https://github.com/mwkroening/riscv.git", branch = "mutex-trait" }
+riscv = { path = "../riscv" }
